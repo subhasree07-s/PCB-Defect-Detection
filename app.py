@@ -1,9 +1,9 @@
 
 import streamlit as st
 from ultralytics import YOLO
+from huggingface_hub import hf_hub_download
 from PIL import Image
 import pandas as pd
-from pathlib import Path
 import time
 
 # =====================================================
@@ -20,8 +20,8 @@ st.set_page_config(
 # PROJECT CONFIGURATION
 # =====================================================
 
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "pcb_defect_best.pt"
+MODEL_REPO = "subhsahu7/pcb-defect-detection-model"
+MODEL_FILENAME = "pcb_defect_best.pt"
 
 CONFIDENCE_THRESHOLD = 0.25
 IMAGE_SIZE = 640
@@ -38,18 +38,21 @@ CLASS_NAMES = {
 }
 
 # =====================================================
-# LOAD MODEL
+# LOAD MODEL FROM HUGGING FACE
 # =====================================================
 
 @st.cache_resource
 def load_model():
 
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(
-            f"Model file not found: {MODEL_PATH}"
-        )
+    hf_token = st.secrets["HF_TOKEN"]
 
-    return YOLO(str(MODEL_PATH))
+    model_path = hf_hub_download(
+        repo_id=MODEL_REPO,
+        filename=MODEL_FILENAME,
+        token=hf_token
+    )
+
+    return YOLO(model_path)
 
 
 # =====================================================
@@ -186,7 +189,11 @@ if uploaded_file is not None:
 
     with col1:
         st.subheader("Original Image")
-        st.image(image, use_container_width=True)
+
+        st.image(
+            image,
+            use_container_width=True
+        )
 
     if st.button(
         "Detect Defects",
@@ -213,11 +220,19 @@ if uploaded_file is not None:
 
             result = results[0]
 
+            # =================================================
+            # DRAW DETECTION BOUNDING BOXES
+            # =================================================
+
             annotated_image = result.plot()
+
+            # Convert BGR to RGB
             annotated_image = annotated_image[:, :, ::-1]
 
             with col2:
+
                 st.subheader("Detection Results")
+
                 st.image(
                     annotated_image,
                     use_container_width=True
@@ -234,6 +249,7 @@ if uploaded_file is not None:
                 for box in result.boxes:
 
                     class_id = int(box.cls.item())
+
                     confidence = float(box.conf.item())
 
                     defect_name = CLASS_NAMES.get(
@@ -253,6 +269,7 @@ if uploaded_file is not None:
             # =================================================
 
             st.divider()
+
             st.subheader("Detection Summary")
 
             total_defects = len(defect_data)
@@ -263,12 +280,20 @@ if uploaded_file is not None:
 
             c1, c2, c3 = st.columns(3)
 
-            c1.metric("Total Defects", total_defects)
+            c1.metric(
+                "Total Defects",
+                total_defects
+            )
+
             c2.metric(
                 "Inference Time",
                 f"{inference_time:.3f} sec"
             )
-            c3.metric("Defect Types", unique_defects)
+
+            c3.metric(
+                "Defect Types",
+                unique_defects
+            )
 
             # =================================================
             # DETECTION RESULTS TABLE
